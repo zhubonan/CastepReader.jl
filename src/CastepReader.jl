@@ -1,0 +1,14 @@
+
+module CastepReader
+
+    CastepFortranFile(io) = FortranFile(io, convert="big-endian")
+    const IntF = Int32
+
+    include("castep_bin.jl")
+    include("optical_matrix.jl")
+    include("pdos_bin.jl")
+    include("bands.jl")
+    include("cell.jl")
+
+    export read_castep_check, read_cst_ome, read_ome_bin, read_pdos_bin
+end
