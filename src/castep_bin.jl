@@ -29,7 +29,7 @@ macro readtag(f, outdict, tags, expr)
                 push!(eout, :(skiptag($f)))
             else
                 push!(eout, quote
-                    gototag(:($line), $f, $tags)     
+                    gototag($(Meta.quot(line)), $f, $tags)     
                 end
                 )
             end
@@ -39,13 +39,12 @@ macro readtag(f, outdict, tags, expr)
         if line.head == :(::)
             var = line.args[1]
             type = line.args[2]
-            println(var)
             push!(eout, quote
                 $outdict[$(Meta.quot(var))] = read($f, $type)
             end)
         end
     end
-    Expr(:block, eout...)
+    esc(Expr(:block, eout...))
 end
 
 """
@@ -126,7 +125,7 @@ end
 """
 Read the forces
 """
-function read_forces!(output, f::FortranFile, tags)
+function read_forces!_(output, f::FortranFile, tags)
     gototag("FORCES", f, tags)
     nspecies = output[:NUM_SPCIES]
     nmax = output[:MAX_IONS_IN_SPECIES]
@@ -134,6 +133,19 @@ function read_forces!(output, f::FortranFile, tags)
     output
 end
 
+"""
+Read the forces
+"""
+function read_forces!(output, f::FortranFile, tags)
+
+    nspecies = output[:NUM_SPCIES]
+    nmax = output[:MAX_IONS_IN_SPECIES]
+    @readtag f output tags begin
+        FORCES
+        FORCES::(Float64, 3, nmax, nspecies)
+    end
+    output
+end
 function read_stress!(output, f::FortranFile, tags)
     gototag("STRESS", f, tags)
     output[:STRESS] = read(f, (Float64, 6))   # Components of the stress tensor (Stress)
@@ -146,7 +158,7 @@ end
 Seek to a tag and be read to read in the data following it
 """
 function gototag(tag, f::FortranFile, tags)
-    seek(f.io, tags[convet(String, tag)::String])
+    seek(f.io, tags[string(tag)])
     rec = FortranFiles.Record(f)
     close(rec)
 end
