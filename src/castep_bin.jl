@@ -1,11 +1,51 @@
 using FortranFiles
 
-macro readtag(size, handle, type)
-    out = quote
-        read($handle, FString{$size})
-        read($handle, $type)
+"""
+Locate the tag and read in data
+
+```julia
+@readtag f outdict tags begin
+
+    CELL_VERSION_NUMBER
+    VERSION_NUMBER::Float64
+
+end
+```
+
+translates to
+```julia
+gototag("CELL_VERSION_NUMBER", f, tags)
+output[:VERSION_NUMBER] = read(f, Float64)
+```
+"""
+macro readtag(f, outdict, tags, expr)
+    @assert expr.head == :block "Expect a block definition"
+    eout = []
+    for line in expr.args
+        isa(line, LineNumberNode) && continue
+        # This defines a new tags 
+        if isa(line, Symbol)  
+            if line == :skip
+                push!(eout, :(skiptag($f)))
+            else
+                push!(eout, quote
+                    gototag(:($line), $f, $tags)     
+                end
+                )
+            end
+            continue
+        end
+        # This is a read line
+        if line.head == :(::)
+            var = line.args[1]
+            type = line.args[2]
+            println(var)
+            push!(eout, quote
+                $outdict[$(Meta.quot(var))] = read($f, $type)
+            end)
+        end
     end
-    esc(out)
+    Expr(:block, eout...)
 end
 
 """
@@ -66,7 +106,8 @@ function read_cell!(output, f::FortranFile, tags)
     read(f, FString{256})
     output[:NUM_IONS] = read(f, IntF)
     
-    max_ions = @readtag 256 f IntF
+    read(f, FString{256})
+    max_ions = read(f, IntF)
     output[:MAX_IONS_IN_SPECIES] = max_ions
 
     # The following sections may not be ordered or may not always be present
@@ -105,7 +146,7 @@ end
 Seek to a tag and be read to read in the data following it
 """
 function gototag(tag, f::FortranFile, tags)
-    seek(f.io, tags[tag])
+    seek(f.io, tags[convet(String, tag)::String])
     rec = FortranFiles.Record(f)
     close(rec)
 end
