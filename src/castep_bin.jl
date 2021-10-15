@@ -8,6 +8,7 @@ Locate the tag and read in data
 
     CELL_VERSION_NUMBER
     VERSION_NUMBER::Float64
+    X::(Float64, :B)
 
 end
 ```
@@ -16,6 +17,7 @@ translates to
 ```julia
 gototag("CELL_VERSION_NUMBER", f, tags)
 output[:VERSION_NUMBER] = read(f, Float64)
+output[:X] = read(f, outdict[:B])
 ```
 """
 macro readtag(f, outdict, tags, expr)
@@ -24,6 +26,8 @@ macro readtag(f, outdict, tags, expr)
     for line in expr.args
         isa(line, LineNumberNode) && continue
         # This defines a new tags 
+        # TODO - add condition to check if the tag exists or not 
+        # Do nothing is the tags is not there!!!
         if isa(line, Symbol)  
             if line == :skip
                 push!(eout, :(skiptag($f)))
@@ -39,6 +43,25 @@ macro readtag(f, outdict, tags, expr)
         if line.head == :(::)
             var = line.args[1]
             type = line.args[2]
+            # Parse the existing parameters
+            # Check if any parameters refer to exiting ones
+            # X::(Float64, :A)
+            # Expands to read(f, (Float64, outdict[:A]))
+            if isa(type, Expr) && type.head == :tuple
+                type_args = []
+                # Construct the type field
+                for arg in  type.args
+                    if isa(arg, QuoteNode)
+                        push!(type_args, quote
+                            $outdict[$arg]    
+                        end
+                        )
+                    else
+                        push!(type_args, arg)
+                    end
+                end
+                type = Expr(:tuple, type_args...)
+            end
             push!(eout, quote
                 $outdict[$(Meta.quot(var))] = read($f, $type)
             end)
@@ -138,14 +161,14 @@ Read the forces
 """
 function read_forces!(output, f::FortranFile, tags)
 
-    nspecies = output[:NUM_SPCIES]
-    nmax = output[:MAX_IONS_IN_SPECIES]
     @readtag f output tags begin
         FORCES
-        FORCES::(Float64, 3, nmax, nspecies)
+        FORCES::(Float64, 3, :MAX_IONS_IN_SPECIES, :NUM_SPCIES)
     end
     output
 end
+
+
 function read_stress!(output, f::FortranFile, tags)
     gototag("STRESS", f, tags)
     output[:STRESS] = read(f, (Float64, 6))   # Components of the stress tensor (Stress)
