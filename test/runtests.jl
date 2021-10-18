@@ -69,3 +69,30 @@ end
 
     @test size(output[:FORCES]) == (3,1, 2)
 end
+
+
+@testset "pdos_bin" begin
+    bin = joinpath(gaas, "GaAs.pdos_bin")
+    output = read_pdos_bin(bin)
+    @test size(output.kpoints)[2] == 10
+    @test size(output.pdos_weights) == (20, 40, 10, 1)
+    @test maximum(output.species) == 2
+end
+
+@testset "om" begin
+    seed = joinpath(gaas, "GaAs")
+    @testset "ome_bin" begin
+        output = cr.read_ome_bin(seed)
+        @test size(output)[4] == 10
+    end
+
+
+    @testset "cst_ome" begin
+        output = cr.read_cst_ome(seed)
+        @test size(output)[4] == 10
+    end
+
+    output = cr.read_om_castep(seed)
+    @test size(output)[4] == 10
+    
+end

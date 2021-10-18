@@ -31,7 +31,7 @@ function read_cst_ome(fname, nb, nk, ns; endian="big-endian")
         @inbounds om[ib, jb, c, ik, is] = read(ffile, ComplexF64) * HaBohr2perAng
     end
     close(ffile)
-    om
+    uconvert.(HaBohr, om)
 end
 
 
@@ -61,8 +61,9 @@ end
 Read the `<seed>.cst_ome` file, requires `<seed>.bands` file to be present.
 """
 function read_cst_ome(seed)
-    bands = read_bands_castep("$(seed).bands", reorder=false)
-    ome = read_cst_ome("$(seed).cst_ome", num_bands(bands), num_kpoints(bands), num_spins(bands))
+    output = read_bands_castep_raw("$(seed).bands")
+    ns, nk, nb = size(output.bands)
+    ome = read_cst_ome("$(seed).cst_ome", nb, nk, ns)
     return ome
 end
 
@@ -72,8 +73,9 @@ end
 Read the `<seed>.ome_bin` file, requires `<seed>.bands` file to be present.
 """
 function read_ome_bin(seed; legacy_format=false)
-    bands = read_bands_castep("$(seed).bands", reorder=false)
-    ome = read_ome_bin("$(seed).ome_bin", num_bands(bands), num_kpoints(bands), num_spins(bands), legacy_format=legacy_format)
+    output = read_bands_castep_raw("$(seed).bands")
+    ns, nk, nb = size(output.bands)
+    ome = read_ome_bin("$(seed).ome_bin", nb, nk, ns, legacy_format=legacy_format)
     return ome
 end
 
@@ -108,17 +110,13 @@ end
 
 
 """
-    read_om_castep(ome_file, nb, nk, ns;endian="big-endian", legacy_format=false, ensure_habohr=true)
+    read_om_castep(ome_file, nb, nk, ns;endian="big-endian", legacy_format=false)
 
 Read optical matrix element for CASTEP
 """
-function read_om_castep(ome_file, nb, nk, ns;endian="big-endian", legacy_format=false, ensure_habohr=true)
+function read_om_castep(ome_file, nb, nk, ns;endian="big-endian", legacy_format=false)
     if endswith(ome_file, "cst_ome")
         out = read_cst_ome(ome_file, nb, nk, ns;endian)
-        # Ensure the array is in HaBohr for the sake of type stability
-        if ensure_habohr
-            out = uconvert.(HaBohr, out)
-        end
     elseif endswith(ome_file, "ome_bin")
         out = read_ome_bin(ome_file, nb, nk, ns;endian, legacy_format)
     else
@@ -128,18 +126,19 @@ function read_om_castep(ome_file, nb, nk, ns;endian="big-endian", legacy_format=
 end
 
 """
-    read_om_castep(seed; endian="big-endian", legacy_format=false, ensure_habohr=true)
+    read_om_castep(seed; endian="big-endian", legacy_format=false)
 
 Read optical matrix element given a CASTEP seed name.
 """
-function read_om_castep(seed; endian="big-endian", legacy_format=false, ensure_habohr=true)
-    bands = read_bands_castep("$(seed).bands", reorder=false)
+function read_om_castep(seed; endian="big-endian", legacy_format=false)
+    output = read_bands_castep_raw("$(seed).bands")
     if isfile("$(seed).ome_bin")
         ome_file = "$(seed).ome_bin"
     else
         ome_file = "$(seed).cst_ome"
     end
-    read_om_castep(ome_file, num_bands(bands), num_kpoints(bands), num_spins(bands);endian, legacy_format, ensure_habohr)
+    ns, nk, nb = size(output.bands)
+    read_om_castep(ome_file, nb, nk, ns;endian, legacy_format)
 end
 
 function write_ome_bin(fname::AbstractString, om::Array{T}; endian="big-endian", version=1.0) where {T<:ComplexF64}
@@ -172,3 +171,5 @@ function write_ome_bin(fname::AbstractString, om::Array{T}; endian="big-endian",
     close(ffile)
 end
 
+precompile(read_ome_bin, (String,))
+precompile(read_cst_ome, (String,))

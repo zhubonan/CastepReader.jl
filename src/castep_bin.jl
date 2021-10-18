@@ -5,24 +5,31 @@ CastepFortranFile(io) = FortranFile(io, convert="big-endian")
 const IntF = Int32
 
 """
-Locate the tag and read in data
+Macro for compact representation of how data should read from the binary file
 
+For example, the following definition:
 ```julia
 @readtag f outdict tags begin
 
     CELL_VERSION_NUMBER
     VERSION_NUMBER::Float64
+    skip
     X::(Float64, :B)
 
 end
 ```
-
-translates to
+expands into to:
 ```julia
-gototag("CELL_VERSION_NUMBER", f, tags)
-output[:VERSION_NUMBER] = read(f, Float64)
-output[:X] = read(f, outdict[:B])
+if "CELL_VERSION_NUMBER" in keys(tags)
+    gototag("CELL_VERSION_NUMBER", f, tags)
+    output[:VERSION_NUMBER] = read(f, Float64)
+    skiptag(f)
+    output[:X] = read(f, outdict[:B])
+end
+
+Note that tags that are not present will simply be skipped.
 ```
+
 """
 macro readtag(f, outdict, tags, expr)
     @assert expr.head == :block "Expect a block definition"
@@ -134,7 +141,7 @@ end
 """
 Record the positions of eligible records
 """
-function record_tag!(out, rec;offset)
+function record_tag!(out::Dict{String,Int}, rec;offset::Int)
     loc = position(rec.io)
     fs = read(rec, FString{rec.subreclen})  # Read as string
     any(x -> x < 0, fs.data) && return nothing
@@ -179,7 +186,7 @@ end
 # end
 
 "Read in the unit cell information"
-function read_cell!(output, f::FortranFile, tags)
+function read_cell!(output, f::FortranFile, tags::Dict{String,Int})
 
     @readtag f output tags begin
         BEGIN_UNIT_CELL
@@ -215,7 +222,7 @@ end
 """
 Read the forces
 """
-function read_forces!(output, f::FortranFile, tags)
+function read_forces!(output, f::FortranFile, tags::Dict{String,Int})
     @readtag f output tags begin
         FORCES
         FORCES::(Float64, 3, :MAX_IONS_IN_SPECIES, :NUM_SPECIES)
@@ -224,7 +231,7 @@ function read_forces!(output, f::FortranFile, tags)
 end
 
 
-function read_stress!(output, f::FortranFile, tags)
+function read_stress!(output, f::FortranFile, tags::Dict{String,Int})
     @readtag f output tags begin
         STRESS
         STRESS::(Float64, 6)
@@ -236,7 +243,7 @@ end
 """
 Seek to a tag and be read to read in the data following it
 """
-function gototag(tag, f::FortranFile, tags)
+function gototag(tag, f::FortranFile, tags::Dict{String,Int})
     seek(f.io, tags[string(tag)])
     rec = FortranFiles.Record(f)
     close(rec)
@@ -265,6 +272,8 @@ function read_castep_check(fname)
     end
     output
 end
+
+precompile(read_castep_check, (String, ))
 export read_castep_check
 
 end

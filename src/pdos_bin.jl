@@ -1,33 +1,15 @@
 using Parameters
 
-"""
-Type storing the information read from the PDOS file
-"""
-@with_kw struct PDOS
-    fversion::Float64
-    fheader::String
-    nk::Int
-    ns::Int
-    norb::Int
-    max_eignenv::Int
-    "Index array for species"
-    species::Vector{Int}
-    "Index array for ion number in the species"
-    ion::Vector{Int}
-    "Index array for the angumar momentum channel"
-    am_channel::Vector{Int}
-    pdos_weights::Array{Float64, 4}
-    kpoints::Array{Float64, 2}
-    num_eignvalues::Int
-end
 
 """
-Read the pdos_bin file
+    read_pdos_bin(f::FortranFile)
+
+Read the `pdos_bin` file.
 """
 function read_pdos_bin(f::FortranFile)
 
     fversion = read(f, Float64)
-    fheader = strip(string(read(f, FString{80})))
+    fheader = strip(convert(String, read(f, FString{80})))
 
     nk = read(f, IntF)
     ns = read(f, IntF)
@@ -45,7 +27,7 @@ function read_pdos_bin(f::FortranFile)
     num_eignvalues = zeros(Int, ns)
 
     for ik in 1:nk
-        kpos[:, ik] = read(f, IntF, (Float64, 3)) 
+        _, kpos[:, ik] = read(f, IntF, (Float64, 3)) 
         for is in 1:ns
             read(f, IntF)
             num_eignvalues[is] = read(f, IntF)
@@ -54,7 +36,7 @@ function read_pdos_bin(f::FortranFile)
             end
         end
     end
-    PDOS(
+    return (
         fversion=fversion,
         fheader=fheader,
         nk=nk,
@@ -69,3 +51,17 @@ function read_pdos_bin(f::FortranFile)
         num_eignvalues=num_eignvalues,
     )
 end
+
+"""
+    read_pdos_bin(fname::AbstractString)
+
+Read the `pdos_bin` file.
+"""
+function read_pdos_bin(fname::AbstractString)
+    open(fname) do fh
+        f = CastepFortranFile(fh)
+        read_pdos_bin(f)
+    end
+end
+
+precompile(read_pdos_bin, (String,))

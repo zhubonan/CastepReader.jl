@@ -13,7 +13,7 @@ order of kpoint in other quantities, such as the optical matrix, are the same as
 bands file rather than following the internal "counter". 
 
 """
-function read_bands_castep_raw(fname)
+function read_bands_castep_raw(fname::AbstractString)
     nk, ns, nelect, neign, fermi_engs, cell_mat = read_bands_header(fname)
     # Allocate the ararys
     bands = zeros(Float64, ns, nk, neign)
@@ -56,14 +56,20 @@ function read_bands_castep_raw(fname)
     bands_with_unit = uconvert.(u"eV", bands .* u"Eh_au")
 
 
-    return kpoints, kweight, kidx, bands_with_unit, nelect, fermi_engs, cell_mat
+    return (kpoints=kpoints, 
+            kweights=kweight, 
+            kidx=kidx, 
+            bands=bands_with_unit, 
+            nelect=nelect, 
+            fermi_engs=fermi_engs, 
+            cell_mat=cell_mat)
 end
 
 
 """
 Read the header for the bands file
 """
-function read_bands_header(fname)
+function read_bands_header(fname::AbstractString)
     bfile = open(fname)
     nk = 0
     ns = 0
@@ -114,3 +120,6 @@ function read_bands_header(fname)
     @assert length(efermi) > 0
     return nk, ns, nelect, neigen, efermi, cell_vec_with_unit
 end
+
+
+precompile(read_bands_castep_raw, (String,))
