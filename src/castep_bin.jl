@@ -150,41 +150,6 @@ function record_tag!(out::Dict{String,Int}, rec;offset::Int)
     isnothing(m) || (out[str] = loc - offset)
 end
 
-# "Read in the unit cell information"
-# function read_cell!(output, f::FortranFile, tags)
-#     seek(f.io, tags["BEGIN_UNIT_CELL"])
-#     read(f, FString{256})
-#     read(f, FString{256})
-#     output[:REAL_LATTICE] = read(f, (Float64, 3, 3))
-#     read(f, FString{256})
-#     output[:RECIP_LATTICE] = read(f, (Float64, 3, 3))
-#     read(f, FString{256})
-#     output[:VOLUME] = read(f, Float64)
-
-#     read(f, FString{256})
-#     nspecies = read(f, IntF)
-#     output[:NUM_SPCIES] = nspecies
-
-#     read(f, FString{256})
-#     output[:NUM_IONS] = read(f, IntF)
-    
-#     read(f, FString{256})
-#     max_ions = read(f, IntF)
-#     output[:MAX_IONS_IN_SPECIES] = max_ions
-
-#     # The following sections may not be ordered or may not always be present
-#     # So we read by direct seeking
-#     gototag("CELL_VERSION_NUMBER", f, tags)
-#     output[:VERSION_NUMBER] = read(f, Float64)
-#     gototag("CELL%NUM_IONS_IN_SPECIES", f, tags)
-#     output[:NUM_IONS_IN_SPECIES] = read(f, (IntF, nspecies))
-#     gototag("CELL%IONIC_POSITIONS", f, tags)
-#     output[:IONIC_POSITIONS] = read(f, (Float64, 3, max_ions, nspecies))
-#     gototag("CELL%IONIC_VELOCITIES", f, tags)
-#     output[:IONIC_VELOCITIES] = read(f, (Float64, 3, max_ions, nspecies))
-#     output
-# end
-
 "Read in the unit cell information"
 function read_cell!(output, f::FortranFile, tags::Dict{String,Int})
 
