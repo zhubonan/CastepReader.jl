@@ -1,4 +1,8 @@
+
+module CastepBin
 using FortranFiles
+CastepFortranFile(io) = FortranFile(io, convert="big-endian")
+const IntF = Int32
 
 """
 Locate the tag and read in data
@@ -23,20 +27,43 @@ output[:X] = read(f, outdict[:B])
 macro readtag(f, outdict, tags, expr)
     @assert expr.head == :block "Expect a block definition"
     eout = []
+    thistag = Pair(nothing, [])
+
+    function flush_if_block!(eout, thistag)
+        if !isnothing(thistag.first)
+            push!(eout, Expr(:if, 
+            quote
+                $(thistag.first) in keys($tags)
+            end, 
+            Expr(:block, thistag.second...))
+            )
+        end
+    end
+
     for line in expr.args
         isa(line, LineNumberNode) && continue
         # This defines a new tags 
         # TODO - add condition to check if the tag exists or not 
         # Do nothing is the tags is not there!!!
+        # Symbol as tag name
         if isa(line, Symbol)  
-            if line == :skip
-                push!(eout, :(skiptag($f)))
+            if line == :skip || line == :SKIP
+                push!(thistag.second, :(skiptag($f)))
+                continue
             else
-                push!(eout, quote
-                    gototag($(Meta.quot(line)), $f, $tags)     
-                end
-                )
+                line = String(line)
             end
+        end
+        # String - treat as the name of the required tag
+        if isa(line, String)
+            # Create the condition - only parse if the tag exists
+            if !isnothing(thistag.first)
+                flush_if_block!(eout, thistag)
+            end
+            thistag = Pair(line, [])
+            push!(thistag.second, quote
+                gototag($line, $f, $tags)     
+            end)
             continue
         end
         # This is a read line
@@ -62,11 +89,17 @@ macro readtag(f, outdict, tags, expr)
                 end
                 type = Expr(:tuple, type_args...)
             end
-            push!(eout, quote
+            push!(thistag.second, quote
                 $outdict[$(Meta.quot(var))] = read($f, $type)
             end)
         end
     end
+
+    # Flust out the last entry
+    if !isnothing(thistag.first)
+        flush_if_block!(eout, thistag)
+    end
+
     esc(Expr(:block, eout...))
 end
 
@@ -110,70 +143,93 @@ function record_tag!(out, rec;offset)
     isnothing(m) || (out[str] = loc - offset)
 end
 
+# "Read in the unit cell information"
+# function read_cell!(output, f::FortranFile, tags)
+#     seek(f.io, tags["BEGIN_UNIT_CELL"])
+#     read(f, FString{256})
+#     read(f, FString{256})
+#     output[:REAL_LATTICE] = read(f, (Float64, 3, 3))
+#     read(f, FString{256})
+#     output[:RECIP_LATTICE] = read(f, (Float64, 3, 3))
+#     read(f, FString{256})
+#     output[:VOLUME] = read(f, Float64)
+
+#     read(f, FString{256})
+#     nspecies = read(f, IntF)
+#     output[:NUM_SPCIES] = nspecies
+
+#     read(f, FString{256})
+#     output[:NUM_IONS] = read(f, IntF)
+    
+#     read(f, FString{256})
+#     max_ions = read(f, IntF)
+#     output[:MAX_IONS_IN_SPECIES] = max_ions
+
+#     # The following sections may not be ordered or may not always be present
+#     # So we read by direct seeking
+#     gototag("CELL_VERSION_NUMBER", f, tags)
+#     output[:VERSION_NUMBER] = read(f, Float64)
+#     gototag("CELL%NUM_IONS_IN_SPECIES", f, tags)
+#     output[:NUM_IONS_IN_SPECIES] = read(f, (IntF, nspecies))
+#     gototag("CELL%IONIC_POSITIONS", f, tags)
+#     output[:IONIC_POSITIONS] = read(f, (Float64, 3, max_ions, nspecies))
+#     gototag("CELL%IONIC_VELOCITIES", f, tags)
+#     output[:IONIC_VELOCITIES] = read(f, (Float64, 3, max_ions, nspecies))
+#     output
+# end
+
 "Read in the unit cell information"
 function read_cell!(output, f::FortranFile, tags)
-    seek(f.io, tags["BEGIN_UNIT_CELL"])
-    read(f, FString{256})
-    read(f, FString{256})
-    output[:REAL_LATTICE] = read(f, (Float64, 3, 3))
-    read(f, FString{256})
-    output[:RECIP_LATTICE] = read(f, (Float64, 3, 3))
-    read(f, FString{256})
-    output[:VOLUME] = read(f, Float64)
 
-    read(f, FString{256})
-    nspecies = read(f, IntF)
-    output[:NUM_SPCIES] = nspecies
+    @readtag f output tags begin
+        BEGIN_UNIT_CELL
+        skip
+        REAL_LATTICE::(Float64, 3, 3)
+        skip
+        RECIP_LATTICE::(Float64, 3, 3)
+        skip
+        VOLUME::Float64
+        skip
+        NUM_SPECIES::IntF
+        skip
+        NUM_IONS::IntF
+        skip
+        MAX_IONS_IN_SPECIES::IntF
 
-    read(f, FString{256})
-    output[:NUM_IONS] = read(f, IntF)
-    
-    read(f, FString{256})
-    max_ions = read(f, IntF)
-    output[:MAX_IONS_IN_SPECIES] = max_ions
+        CELL_VERSION_NUMBER
+        VERSION_NUMBER::Float64
 
-    # The following sections may not be ordered or may not always be present
-    # So we read by direct seeking
-    gototag("CELL_VERSION_NUMBER", f, tags)
-    output[:VERSION_NUMBER] = read(f, Float64)
-    gototag("CELL%NUM_IONS_IN_SPECIES", f, tags)
-    output[:NUM_IONS_IN_SPECIES] = read(f, (IntF, nspecies))
-    gototag("CELL%IONIC_POSITIONS", f, tags)
-    output[:IONIC_POSITIONS] = read(f, (Float64, 3, max_ions, nspecies))
-    gototag("CELL%IONIC_VELOCITIES", f, tags)
-    output[:IONIC_VELOCITIES] = read(f, (Float64, 3, max_ions, nspecies))
+        "CELL%NUM_IONS_IN_SPECIES"
+        NUM_IONS_IN_SPECIES::(Float64, :NUM_SPECIES)
+
+        "CELL%IONIC_POSITIONS"
+        NUM_IONS_IN_SPECIES::(Float64, 3, :MAX_IONS_IN_SPECIES, :NUM_SPECIES)
+
+        "CELL%IONIC_VELOCITIES"
+        IONIC_VELOCITIES::(Float64, 3, :MAX_IONS_IN_SPECIES, :NUM_SPECIES)
+    end
     output
 end
 
-"""
-Read the forces
-"""
-function read_forces!_(output, f::FortranFile, tags)
-    gototag("FORCES", f, tags)
-    nspecies = output[:NUM_SPCIES]
-    nmax = output[:MAX_IONS_IN_SPECIES]
-    output[:FORCES] = read(f, (Float64, 3, nmax, nspecies))
-    output
-end
 
 """
 Read the forces
 """
 function read_forces!(output, f::FortranFile, tags)
-
     @readtag f output tags begin
         FORCES
-        FORCES::(Float64, 3, :MAX_IONS_IN_SPECIES, :NUM_SPCIES)
+        FORCES::(Float64, 3, :MAX_IONS_IN_SPECIES, :NUM_SPECIES)
     end
     output
 end
 
 
 function read_stress!(output, f::FortranFile, tags)
-    gototag("STRESS", f, tags)
-    output[:STRESS] = read(f, (Float64, 6))   # Components of the stress tensor (Stress)
-    output[:STRAIN] = read(f, (Float64, 3,3))  # Components of the stress tensor (External)
-    output
+    @readtag f output tags begin
+        STRESS
+        STRESS::(Float64, 6)
+        STRAIN::(Float64, 3,3)
+    end
 end
 
 
@@ -209,3 +265,8 @@ function read_castep_check(fname)
     end
     output
 end
+export read_castep_check
+
+end
+
+using .CastepBin

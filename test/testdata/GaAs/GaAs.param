@@ -1,0 +1,17 @@
+task		spectral  ! The TASK keyword instructs CASTEP what to do
+spectral_task    optics
+
+cut_off_energy   350
+xc_functional   LDA           ! Which exchange-correlation functional to use.
+fix_occupancy   false          ! Treat the system as an insulator
+opt_strategy    speed         ! Choose algorithms for best speed at expense of memory.
+num_dump_cycles 0             ! Don't write unwanted ".wvfn" files.
+write_formatted_density TRUE  ! Write out a density file that we can view using (e.g.) Jmol.
+write_cell_structure true
+spectral_eigenvalue_tol 1e-9
+elec_energy_tol 1e-8
+grid_scale 2 
+fine_grid_scale 3
+#write_checkpoint none
+rand_seed 42
+smearing_width 0.001

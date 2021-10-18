@@ -1,8 +1,7 @@
 
 module CastepReader
 
-    CastepFortranFile(io) = FortranFile(io, convert="big-endian")
-    const IntF = Int32
+
 
     include("castep_bin.jl")
     include("optical_matrix.jl")

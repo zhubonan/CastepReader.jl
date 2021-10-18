@@ -13,7 +13,7 @@ order of kpoint in other quantities, such as the optical matrix, are the same as
 bands file rather than following the internal "counter". 
 
 """
-function read_bands_castep_raw(fname; reorder=false)
+function read_bands_castep_raw(fname)
     nk, ns, nelect, neign, fermi_engs, cell_mat = read_bands_header(fname)
     # Allocate the ararys
     bands = zeros(Float64, ns, nk, neign)
@@ -52,11 +52,6 @@ function read_bands_castep_raw(fname; reorder=false)
         ecount += 1
     end
 
-    if reorder == true
-        bands = bands_reorder(bands, kidx)
-        kpoints, kidx = kpoints_reorder(kpoints, kweight, kidx)
-    end
-
     # Convert unit to eV
     bands_with_unit = uconvert.(u"eV", bands .* u"Eh_au")
 
@@ -64,55 +59,6 @@ function read_bands_castep_raw(fname; reorder=false)
     return kpoints, kweight, kidx, bands_with_unit, nelect, fermi_engs, cell_mat
 end
 
-"""
-    kpoints_reorder(kpoints, kweights, kidx)
-
-Sort the kpoints and weights using and parsed indices of each point.
-
-
-!!! note "Order of kpoints"
-
-    Reordering is only useful for analysing outputs of tasks such as the band structure
-    calculation where the order of kpoints does matter. 
-    Indices of k-dimensions of most outputs are based on the *order of appearance* in the `.bands`
-    file rather than the nomindated values.
-"""
-function kpoints_reorder(kpoints, kweights, kidx)
-    # Recovery the orignial order as they defined 
-    kpoints_new = similar(kpoints)
-    kweights_new = similar(kweights)
-    old_order = similar(kidx)  # Mapping to recovery the old older
-    for (iold, i_actual) in enumerate(kidx)
-        kpoints_new[:, i_actual] = kpoints[:, iold] 
-        kweights_new[i_actual] = kweights[iold]
-        old_order[i_actual] = iold
-    end
-    kpoints_new, kweights, old_order
-end
-
-"""
-Sort the eigenvalues using and parsed indices of each k-point
-"""
-function bands_reorder(bands::AbstractArray, bidx)
-    # Recovery the orignial order as they defined 
-    bands_new = similar(bands)
-    for (iold, i_actual) in enumerate(bidx)
-        bands_new[:, i_actual, :] .= bands[:, iold, :] 
-    end
-    bands_new
-end
-
-
-"""
-    read_bands_castep(fname; reorder=false)
-
-Read in the `*.bands` file from CASTEP output and return a `Bands` type. 
-"""
-function read_bands_castep(fname; reorder=false)
-    kpts, kw, kidx, bands, nelec, fermi, cell = read_bands_castep_raw(fname, reorder=reorder)
-    lattice = Lattice(cell)
-    Bands(kpts, kw, bands, 0.0 * unit(eltype(bands)), fermi, size(kpts)[2], size(bands)[3], size(bands)[1], nelec, lattice, Dict{Symbol, Any}(:kidx=>kidx, :kreordered=>reorder))
-end
 
 """
 Read the header for the bands file

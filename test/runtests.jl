@@ -1,0 +1,71 @@
+using Test
+using CastepReader
+using Unitful
+using UnitfulAtomic
+
+const cr=CastepReader
+const testdata = joinpath(pkgdir(cr), "test/testdata")
+
+gaas = joinpath(testdata, "GaAs")
+
+# Test file name functions
+@test cr.suffix("a.b") == "b"
+@test cr.stem("x/a.b") == "x/a"
+@test cr.filename("c/x/a.b") == "a.b"
+@test cr.stem(cr.filename("c/x/a.b")) == "a"
+
+@testset "Bands" begin
+    kpts, kw, kidx, eigen, ne, efermi, cell_file = cr.read_bands_castep_raw(joinpath(gaas, "GaAs.bands"))
+    @test size(kpts) == (3, 10)
+    @test size(kw)[1] == 10
+    @test size(eigen) == (1, 10, 40)
+    @test kpts[:, 8] == [0., 0., 0.]
+    @test kw[8] ≈ 0.008
+    @test kidx[8] == 8
+    @test ne == 28
+    @test efermi[1] == uconvert(u"eV", 0.113556u"Eh_au")
+    @test cell_file[1] == uconvert(u"Å", 5.432963u"a0_au")
+
+    # Read the optical matrix
+    ns, nk, nb = size(eigen)
+    bin = cr.read_ome_bin(joinpath(gaas, "GaAs.ome_bin"), nb, nk, ns)
+    @test size(bin) == (nb, nb, 3, nk, ns)
+    @test bin[1] ≈ (0.00022207179206183356 - 0.0im) * cr.HaBohr
+
+    # TODO - add test for cst_ome
+    cst = cr.read_cst_ome(joinpath(gaas, "GaAs.cst_ome"), nb, nk, ns)
+
+    @test size(cst) == (nb, nb, 3, nk, ns)
+    @test cst[1] ≈ (0.0004183035272252899 - 0.0im) * cr.HaBohr2perAng
+
+end
+
+
+
+# Test reading the cell file
+@testset "read cell" begin
+    cell_file = cr.read_cell_castep(joinpath(gaas, "GaAs.cell"))
+    @test :symmetry_ops in keys(cell_file.blocks)
+    @test begin
+        :kpoints_mp_spacing in keys(cell_file.kws) && cell_file.kws[:kpoints_mp_spacing] == "0.07"
+    end
+    cellmat = cr.read_lattice(cell_file)
+    @test cellmat[1] == 2.875u"Å"
+
+    symm, disp = cr.read_symm_disp(cell_file)
+    @test begin
+        symm[1, 1, 2] == 0. && symm[2, 1, 2] == -1. && all(disp .== 0.)
+    end
+end
+
+@testset "castep_bin" begin
+    bin = joinpath(gaas, "GaAs.castep_bin")    
+    output = read_castep_check(bin)
+    @test :FORCES in keys(output)
+    @test output[:VERSION_NUMBER] ≈ 20.1100006103
+    @test output[:NUM_IONS]  == 2
+    @test output[:NUM_SPECIES]  == 2
+    @test output[:MAX_IONS_IN_SPECIES]  == 1
+
+    @test size(output[:FORCES]) == (3,1, 2)
+end
