@@ -77,6 +77,15 @@ end
     @test size(output.kpoints)[2] == 10
     @test size(output.pdos_weights) == (20, 40, 10, 1)
     @test maximum(output.species) == 2
+
+    m_mask = cr.m_channel_mask(output)
+    @test m_mask[1] == Orbitals.dz2
+    @test m_mask[6] == Orbitals.s
+    @test m_mask[10] == Orbitals.s
+
+    indices = cr.pdos_index_by_site(output)
+    @test indices[1][Orbitals.dz2] == [1] 
+    @test indices[1][Orbitals.s] == [6, 10] 
 end
 
 @testset "om" begin

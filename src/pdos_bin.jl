@@ -1,5 +1,3 @@
-using Parameters
-
 
 """
     read_pdos_bin(f::FortranFile)
@@ -43,9 +41,9 @@ function read_pdos_bin(f::FortranFile)
         ns=ns,
         norb=num_popn_orb,
         max_eignenv=max_eignenv,
-        species=species,
-        ion=ion,
-        am_channel=am_channel,
+        species=species,   # Indexing array for species
+        ion=ion,   # Indexing array for the ion numbers
+        am_channel=am_channel,  # Indexing array for the angular momentum channels (l)
         pdos_weights=pdos_weights,
         kpoints=kpos,
         num_eignvalues=num_eignvalues,
@@ -64,4 +62,78 @@ function read_pdos_bin(fname::AbstractString)
     end
 end
 
+"""
+Reorder the PDOS information
+
+Return a dictionary which can be used as
+
+```julia
+output = pdos_index_by_site(pdos_data)
+idx = output[1][Orbitals.s]   # Index of the s orbital in the pdos_data.weights
+weights = pdos_data.pdos_weights[idx, :, :, :]  # Slice the weight array to obtain the weigths for this site/am combination
+```
+"""
+function pdos_index_by_site(parsed_items)
+    mapping = Orbitals.castep_orbital_order
+    unique_species = sort(unique(parsed_items.species))
+    site_index = 1
+    output_data = Dict{Int, Dict{Orbital, Vector{Int}}}()
+    for ns in unique_species
+        specie_mask = parsed_items.species .== ns
+        total_ions = maximum(parsed_items.ion[specie_mask])  # Total number of ions for this species
+        # Treat each ion for this speice
+        for nion in 1:total_ions
+            ion_mask = (parsed_items.ion .== nion) .& specie_mask
+            max_am = maximum(parsed_items.am_channel[ion_mask])
+            orbs = Dict{Orbital, Vector{Int}}()
+            # Angular momentum channel for each site
+            for am in 0:max_am
+                ion_am_mask = (parsed_items.am_channel .== am) .& ion_mask
+                ion_am_idx = findall(ion_am_mask)
+                for (iam, iloc) in enumerate(ion_am_idx)
+                    #iloc is the index of the orbital
+                    #iam is the m channel
+                    this_orb = mapping[am+1][((iam - 1) % (2 * am + 1)) + 1]  # m number of this orbital
+                    if this_orb in keys(orbs)
+                        push!(orbs[this_orb], iloc)
+                    else
+                        orbs[this_orb] = [iloc]
+                end
+            end
+        end
+        output_data[site_index] = orbs 
+        site_index += 1
+        end
+    end
+    output_data
+end
+
+"""
+Get an masking for the m channels inferred from the repeated appearance of l channels
+
+CASTEP does not write the m channel labels explicity, but they can be inferred from repeated l channels.
+This assumes that l channels of the same atom is written consecutively, which seem to be the case.
+"""
+function m_channel_mask(pdos_data)
+    mapping = Orbitals.castep_orbital_order
+    norb = pdos_data.norb
+    last_am = pdos_data.am_channel[1]
+    current_m = 0
+    m_channels = Array{Orbital, 1}(undef, norb)
+    m_channels[1] = mapping[last_am + 1][1]
+    for i in 2:norb
+        current_am = pdos_data.am_channel[i]
+        if current_am == last_am
+            current_m += 1
+        else
+            current_m = 0
+        end
+        m_channels[i] = mapping[current_am+1][(current_m % (2 * current_am + 1)) + 1]
+        last_am = current_am
+    end
+    m_channels
+end
+
 precompile(read_pdos_bin, (String,))
+
+export m_channel_mask, pdos_index_by_site
