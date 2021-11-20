@@ -147,7 +147,11 @@ function record_tag!(out::Dict{String,Int}, rec;offset::Int)
     any(x -> x < 0, fs.data) && return nothing
     str = strip(convert(String, fs))
     m = match(r"[A-Z_0-9]*$", str)
-    isnothing(m) || (out[str] = loc - offset)
+    isnothing(m) && return
+    if str in keys(out)
+        str = str * "_SECOND"
+    end
+    out[str] = loc - offset
 end
 
 "Read in the unit cell information"
@@ -172,15 +176,102 @@ function read_cell!(output, f::FortranFile, tags::Dict{String,Int})
         VERSION_NUMBER::Float64
 
         "CELL%NUM_IONS_IN_SPECIES"
-        NUM_IONS_IN_SPECIES::(Float64, :NUM_SPECIES)
+
+        NUM_IONS_IN_SPECIES::(IntF, :NUM_SPECIES)
 
         "CELL%IONIC_POSITIONS"
-        NUM_IONS_IN_SPECIES::(Float64, 3, :MAX_IONS_IN_SPECIES, :NUM_SPECIES)
+
+        IONIC_POSITIONS::(Float64, 3, :MAX_IONS_IN_SPECIES, :NUM_SPECIES)
 
         "CELL%IONIC_VELOCITIES"
+
         IONIC_VELOCITIES::(Float64, 3, :MAX_IONS_IN_SPECIES, :NUM_SPECIES)
     end
+    @readtag f output tags begin
+        NKPTS_SECOND
+        NKPTS::IntF
+
+        KPOINTS_SECOND
+        KPOINTS::(Float64, 3, :NKPTS)
+    end
+
     output
+end
+
+function read_grid_properties!(output, f::FortranFile, tags::Dict{String, Int})
+
+    @readtag f output tags begin
+        END_CELL_GLOBAL_SECOND
+        FOUND_GROUND_STATE_WAVEFUNCTION::IntF
+        FOUND_GROUND_STATE_DENSITY::IntF
+        TOTAL_ENERGY::Float64
+        FERMI_ENERGY::Float64
+    end
+    nbands, nspins = read(f, IntF, IntF)
+    output[:NBANDS] = nbands
+    output[:NSPINS] = nspins
+    read_eigenvalue_and_occ!(output, f, tags)
+    skiptag(f)
+    ngxf, ngyf, ngzf = read(f, IntF, IntF, IntF)
+    output[:NGX_FINE] = ngxf
+    output[:NGY_FINE] = ngyf
+    output[:NGZ_FINE] = ngzf
+    read_charge_density!(output, f, tags)
+end
+
+"""
+Read eigenvalues and occupations
+"""
+function read_eigenvalue_and_occ!(output, f, tags)
+    nkpts::Int = output[:NKPTS]
+    nspin::Int = output[:NSPINS]
+    nbands::Int = output[:NBANDS]
+
+    kpoints = zeros(3, nkpts)
+    occ = zeros(nbands, nkpts, nspin)
+    eignvalues = zeros(nbands, nkpts, nspin)
+    for ik in 1:nkpts
+        kpoints[:, ik] = read(f, (Float64, 3))
+        for is in 1:nspin
+            occ[:, ik, is] = read(f, (Float64, nbands))
+            eignvalues[:, ik, is] = read(f, (Float64, nbands))
+        end
+    end
+    output[:OCCUPATIONS] = occ
+    output[:EIGENVALUES] = eignvalues
+    output[:KPOINTS_OF_EIGENVALUES] = kpoints
+end
+
+"""
+Read the charge density section from the binary file
+
+NOTE: only support linear spin-polarisation for now
+"""
+function read_charge_density!(output, f, tags)
+    ngxf::Int = output[:NGX_FINE]
+    ngyf::Int = output[:NGY_FINE]
+    ngzf::Int = output[:NGZ_FINE]
+    nspin::Int = output[:NSPINS]
+    # NOTE - assume not NCM
+    spin_density = zeros(ComplexF64, ngxf, ngyf, ngzf)
+    charge_density = zeros(ComplexF64, ngxf, ngyf, ngzf)
+
+    for _ in 1:ngxf
+        for _ in 1:ngyf
+            if nspin == 2
+                nx, ny, zcol, spincol = read(f, IntF, IntF, (ComplexF64, ngzf), (ComplexF64, ngzf))
+                charge_density[nx, ny, :] = zcol
+                spin_density[nx, ny, :] = spincol
+            else
+                nx, ny, zcol = read(f, IntF, IntF, (ComplexF64, ngzf))
+                charge_density[nx, ny, :] = zcol
+            end
+        end
+    end
+    if nspin == 2
+        output[:SPIN_DENSITY] = spin_density
+    end
+    output[:CHARGE_DENSITY] = charge_density
 end
 
 
