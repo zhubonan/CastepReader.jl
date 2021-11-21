@@ -69,6 +69,7 @@ module CastepReader
     export Orbitals
 
     include("castep_bin.jl")
+    include("wave.jl")
     include("optical_matrix.jl")
     include("pdos_bin.jl")
     include("bands.jl")

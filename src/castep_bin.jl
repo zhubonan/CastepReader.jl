@@ -198,7 +198,7 @@ function read_cell!(output, f::FortranFile, tags::Dict{String,Int})
     output
 end
 
-function read_grid_properties!(output, f::FortranFile, tags::Dict{String, Int})
+function read_grid_properties!(output, f::FortranFile, tags::Dict{String, Int}, with_wavefunction=false)
 
     @readtag f output tags begin
         END_CELL_GLOBAL_SECOND
@@ -210,6 +210,9 @@ function read_grid_properties!(output, f::FortranFile, tags::Dict{String, Int})
     nbands, nspins = read(f, IntF, IntF)
     output[:NBANDS] = nbands
     output[:NSPINS] = nspins
+    if with_wavefunction
+        read_wavefunction_complex!(output, f, tags)
+    end
     read_eigenvalue_and_occ!(output, f, tags)
     skiptag(f)
     ngxf, ngyf, ngzf = read(f, IntF, IntF, IntF)
@@ -274,6 +277,47 @@ function read_charge_density!(output, f, tags)
     output[:CHARGE_DENSITY] = charge_density
 end
 
+function read_wavefunction_complex!(output, f, tags)
+    header = read(f, FString{4})
+    ngx, ngy, ngz = read(f, IntF, IntF, IntF)
+    coeff_size_1, spinorcomps, nbands_max, nkpts, nspins = read(f, IntF, IntF, IntF, IntF, IntF) 
+    coeffs = zeros(ComplexF64, coeff_size_1, spinorcomps, nbands_max, nkpts, nspins)
+    nwaves_at_kp = zeros(Int, nkpts)
+    kpts = zeros(3, nkpts)
+    pw_grid_coord = zeros(IntF, 3, coeff_size_1, nkpts)
+
+    for is in 1:nspins
+        for ik in 1:nkpts
+            kpts[:, ik], nwaves = read(f, (Float64, 3), IntF)
+            nwaves_at_kp[ik] = nwaves
+
+            # Grid coordinates
+            coords_x = read(f, (IntF, nwaves))
+            coords_y = read(f, (IntF, nwaves))
+            coords_z = read(f, (IntF, nwaves))
+            pw_grid_coord[1, 1:nwaves, ik] = coords_x 
+            pw_grid_coord[2, 1:nwaves, ik] = coords_y 
+            pw_grid_coord[3, 1:nwaves, ik] = coords_z 
+
+            for ib in 1:nbands_max
+                for ispinor in 1:spinorcomps
+                    coeff = read(f, (ComplexF64, nwaves))
+                    coeffs[1:nwaves, ispinor, ib, ik, is] = coeff
+                end
+            end
+        end
+    end
+    data = (
+        ngx=ngx,
+        ngy=ngy,
+        ngz=ngz,
+        pw_grid_coord=pw_grid_coord,
+        coeffs=coeffs,
+        kpts=kpts,
+        nwaves_at_kp=nwaves_at_kp,
+    )
+    output[:WAVEFUNCTION_DATA] = data
+end
 
 """
 Read the forces
@@ -325,6 +369,8 @@ function read_castep_check(fname)
         read_cell!(output, f, tags)
         read_forces!(output, f, tags)
         read_stress!(output, f, tags)
+        has_wave = !("CASTEP_BIN" in keys(tags))
+        read_grid_properties!(output, f, tags, has_wave)
     end
     output
 end
