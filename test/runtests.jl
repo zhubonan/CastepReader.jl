@@ -2,6 +2,7 @@ using Test
 using CastepReader
 using Unitful
 using UnitfulAtomic
+using FFTW
 
 const cr=CastepReader
 const testdata = joinpath(pkgdir(cr), "test/testdata")
@@ -68,6 +69,24 @@ end
     @test output[:MAX_IONS_IN_SPECIES]  == 1
 
     @test size(output[:FORCES]) == (3,1, 2)
+end
+
+@testset "wave" begin
+    bin = joinpath(gaas, "GaAs.check")    
+    output = read_castep_check(bin)
+    wavef = CastepReader.WaveFunction(output)
+    ngx = 25
+    @test wavef.ngx == ngx
+    out = CastepReader.sliceband(wavef, 1) 
+    @test size(out, 1) == ngx
+    ifft!(wavef)
+    @test wavef.real_space == true
+    fft!(wavef)
+    @test wavef.real_space == false
+    # Charge density - with out interpolation
+    ifft!(wavef)
+    out = CastepReader.chargedensity(wavef, ones(wavef.nbands, wavef.nkpts, wavef.nspins))
+    @assert out.ngx == ngx
 end
 
 

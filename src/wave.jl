@@ -3,6 +3,9 @@ Wavefunction related routines
 
 The goal is to recover the full wavefunction grid from the planewave coefficients
 =#
+import FFTW
+import FFTW: fft!, ifft!
+
 
 """
     coeff_to_recip(coeff_array, nwaves_at_kp, grid_coords, ngx, ngy, ngz)
@@ -60,4 +63,97 @@ Needs to be FFTed to get to the real space representation.
 function wavefunction(data_dict::Dict)
     wave = data_dict[:WAVEFUNCTION_DATA]
     coeff_to_recip(wave.coeffs, wave.nwaves_at_kp, wave.pw_grid_coord, wave.ngx, wave.ngy, wave.ngz)
+end
+
+
+"""
+Type for storing a wavefunction
+"""
+mutable struct WaveFunction
+    wave::Array{ComplexF64, 7}
+    real_space::Bool
+    ngx::Int
+    ngy::Int
+    ngz::Int
+    nspinor::Int
+    nbands::Int
+    nkpts::Int
+    nspins::Int
+end
+
+struct ChargeDensity
+    density::Array{Float64, 4}
+    ngx::Int
+    ngy::Int
+    ngz::Int
+    nspins::Int
+end
+
+function ChargeDensity(density::Array)
+    ChargeDensity(density, size(density)...)
+end
+
+function WaveFunction(data_dict::Dict)
+    wave = wavefunction(data_dict)
+    args = size(wave)
+    WaveFunction(wave, false, args...)
+end
+
+slicespinor(wave::WaveFunction, ispinor) = selectdim(wave.wave, 4, ispinor)
+
+sliceband(wave::WaveFunction, ib) = selectdim(wave.wave, 5, ib)
+
+slicekpoint(wave::WaveFunction, ik) = selectdim(wave.wave, 6, ik)
+
+slicespin(wave::WaveFunction, is) = selectdim(wave.wave, 7, is)
+
+"""
+In place FFT to transfer the wavefunction to the frequency space
+
+The in-place transformation is apply slice by slice
+"""
+function FFTW.fft!(wavef::WaveFunction)
+    @assert wavef.real_space "WaveFunction is already in the frequency space"
+    xyz_slice = zeros(ComplexF64, wavef.ngx, wavef.ngy, wavef.ngz) 
+    for i=1:wavef.nspins,j=1:wavef.nkpts,k=1:wavef.nbands,l=1:wavef.nspinor
+        xyz_slice .= wavef.wave[:, :, :, l, k, j, i]
+        wavef.wave[:, :, :, l, k, j, i] = FFTW.fft(xyz_slice)
+    end
+    wavef.real_space = false
+    wavef
+end
+
+
+"""
+In place FFT to transfer the wavefunction to the real space
+
+The in-place transformation is apply slice by slice
+"""
+function FFTW.ifft!(wavef::WaveFunction)
+    @assert ~wavef.real_space "WaveFunction is already in the real space"
+    xyz_slice = zeros(ComplexF64, wavef.ngx, wavef.ngy, wavef.ngz) 
+    for i=1:wavef.nspins,j=1:wavef.nkpts,k=1:wavef.nbands,l=1:wavef.nspinor
+        xyz_slice .= wavef.wave[:, :, :, l, k, j, i]
+        wavef.wave[:, :, :, l, k, j, i] = FFTW.ifft(xyz_slice)
+    end
+    wavef.real_space = true
+    wavef
+end
+
+
+"""
+Compute charge density from the wavefunction
+
+The unit is yet to be determined for now.
+"""
+function chargedensity(wavef::WaveFunction, occupations::Array{T, 3}) where {T}
+    @assert wavef.real_space == true "Wavefunction must be in the real space"
+    density = zeros(Float64, wavef.ngx, wavef.ngy, wavef.ngz, wavef.nspins)
+    for is=1:wavef.nspins,ik=1:wavef.nkpts,ib=1:wavef.nbands,ispinor=1:wavef.nspinor
+        for z=1:wavef.ngz, y=1:wavef.ngy, x=1:wavef.ngx
+            val = wavef.wave[x, y, z, ispinor, ib, ik, is]
+            density[x, y, z, is] += real(val * conj(val)) * occupations[ib, ik, is]
+        end
+    end
+    ChargeDensity(density)
 end
