@@ -6,6 +6,8 @@ The goal is to recover the full wavefunction grid from the planewave coefficient
 import FFTW
 import FFTW: fft!, ifft!
 
+export WaveFunction, ChargeDensity, chargedensity, sliceband, slicekpoint, slicespin, slicespinor
+
 
 """
     coeff_to_recip(coeff_array, nwaves_at_kp, grid_coords, ngx, ngy, ngz)
