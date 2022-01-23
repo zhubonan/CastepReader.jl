@@ -186,6 +186,10 @@ function read_cell!(output, f::FortranFile, tags::Dict{String,Int})
         "CELL%IONIC_VELOCITIES"
 
         IONIC_VELOCITIES::(Float64, 3, :MAX_IONS_IN_SPECIES, :NUM_SPECIES)
+
+        "CELL%SPECIES_SYMBOL"
+
+        SPECIES_SYMBOL::(FString{8}, :NUM_SPECIES)
     end
     @readtag f output tags begin
         NKPTS_SECOND
@@ -221,6 +225,26 @@ function read_grid_properties!(output, f::FortranFile, tags::Dict{String, Int}, 
     output[:NGZ_FINE] = ngzf
     read_charge_density!(output, f, tags)
 end
+
+"""
+Read the grid properties but update the plane wave coefficients as given
+"""
+function update_wavefunction(output, f::FortranFile, tags::Dict{String, Int}, coeffs)
+
+    @readtag f output tags begin
+        END_CELL_GLOBAL_SECOND
+        FOUND_GROUND_STATE_WAVEFUNCTION::IntF
+        FOUND_GROUND_STATE_DENSITY::IntF
+        TOTAL_ENERGY::Float64
+        FERMI_ENERGY::Float64
+    end
+    nbands, nspins = read(f, IntF, IntF)
+    output[:NBANDS] = nbands
+    output[:NSPINS] = nspins
+    # Write the wave function
+    write_wavefunction_complex!(output, f, tags, coeffs)
+end
+
 
 """
 Read eigenvalues and occupations
@@ -320,6 +344,49 @@ function read_wavefunction_complex!(output, f, tags)
 end
 
 """
+Write the wavefunction coefficients back to the file
+"""
+function write_wavefunction_complex!(output, f, tags, coeffs)
+    header = read(f, FString{4})
+    ngx, ngy, ngz = read(f, IntF, IntF, IntF)
+    coeff_size_1, spinorcomps, nbands_max, nkpts, nspins = read(f, IntF, IntF, IntF, IntF, IntF) 
+    nwaves_at_kp = zeros(Int, nkpts)
+    kpts = zeros(3, nkpts)
+    pw_grid_coord = zeros(IntF, 3, coeff_size_1, nkpts)
+
+    for is in 1:nspins
+        for ik in 1:nkpts
+            kpts[:, ik], nwaves = read(f, (Float64, 3), IntF)
+            nwaves_at_kp[ik] = nwaves
+
+            # Grid coordinates
+            coords_x = read(f, (IntF, nwaves))
+            coords_y = read(f, (IntF, nwaves))
+            coords_z = read(f, (IntF, nwaves))
+            pw_grid_coord[1, 1:nwaves, ik] = coords_x 
+            pw_grid_coord[2, 1:nwaves, ik] = coords_y 
+            pw_grid_coord[3, 1:nwaves, ik] = coords_z 
+
+            for ib in 1:nbands_max
+                for ispinor in 1:spinorcomps
+                    write(f, coeffs[1:nwaves, ispinor, ib, ik, is])
+                end
+            end
+        end
+    end
+    data = (
+        ngx=ngx,
+        ngy=ngy,
+        ngz=ngz,
+        pw_grid_coord=pw_grid_coord,
+        coeffs=coeffs,
+        kpts=kpts,
+        nwaves_at_kp=nwaves_at_kp,
+    )
+    output[:WAVEFUNCTION_DATA] = data
+end
+
+"""
 Read the forces
 """
 function read_forces!(output, f::FortranFile, tags::Dict{String,Int})
@@ -375,8 +442,19 @@ function read_castep_check(fname)
     output
 end
 
+function update_wavefunction(fname, coeffs)
+    output = Dict{Symbol, Any}()
+    open(fname, "r+") do fhandle
+        f = CastepFortranFile(fhandle)
+        tags = locate_tags(f)
+        has_wave = !("CASTEP_BIN" in keys(tags))
+        @assert has_wave "The file does not contain any wavefunction data"
+        update_wavefunction(output, f, tags, coeffs)
+    end
+end
+
 precompile(read_castep_check, (String, ))
-export read_castep_check
+export read_castep_check, update_wavefunction
 
 end
 

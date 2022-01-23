@@ -72,8 +72,8 @@ end
 end
 
 @testset "wave" begin
-    bin = joinpath(gaas, "GaAs.check")    
-    output = read_castep_check(bin)
+    checkfile = joinpath(gaas, "GaAs.check")    
+    output = read_castep_check(checkfile)
     wavef = CastepReader.WaveFunction(output)
     ngx = 25
     @test wavef.ngx == ngx
@@ -87,6 +87,25 @@ end
     ifft!(wavef)
     out = CastepReader.chargedensity(wavef, ones(wavef.nbands, wavef.nkpts, wavef.nspins))
     @assert out.ngx == ngx
+
+    # For test updating wave coefficients
+    @testset "update" begin
+        dst = joinpath(mktempdir(), "GaAs.check")
+        cp(checkfile, dst)
+        data = read_castep_check(dst)
+        getcoeff = data -> data[:WAVEFUNCTION_DATA].coeffs 
+        getcoeff(data)[1011] = 0.
+        # Update the data
+        CastepReader.update_wavefunction(dst, getcoeff(data))
+        new_data = read_castep_check(dst)
+        @test getcoeff(new_data)[1011] == 0.
+
+        # Cannot update castep_bin files - should throw assertion error 
+        binfile = joinpath(gaas, "GaAs.castep_bin")    
+        dst = joinpath(mktempdir(), "GaAs.castep_bin")
+        cp(binfile, dst)
+        @test_throws AssertionError  CastepReader.update_wavefunction(dst, getcoeff(data))
+    end
 end
 
 

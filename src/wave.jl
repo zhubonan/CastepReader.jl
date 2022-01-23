@@ -36,6 +36,40 @@ function coeff_to_recip(coeff_array, nwaves_at_kp, grid_coords, ngx, ngy, ngz)
     grid
 end
 
+
+"""
+Convert full grid representation back to reciprocal coefficients
+The original specifications of the wave function needs to be reused
+"""
+function recip_to_coeff(grid, coeff_array_orig, nwaves_at_kp, grid_coords, ngx, ngy, ngz)
+    npw, nspinor, band_max, nkpts, nspins = size(coeff_array_orig)
+    grid_size = Int[ngx, ngy, ngz]
+    indices = coord_to_indices(grid_coords, grid_size)
+    # Grid data index with ngx, ngy, ngz, nspinor, band_max, nkpts, nspins
+    # Note that the kpoints order may be different from those read from other sections
+    # so be careful with that.....
+    # Allocate the coefficients
+    coeff_array = similar(coeff_array_orig)
+    fill!(coeff_array, 0.)
+
+    for is in 1:nspins
+        for ik in 1:nkpts
+            for ib in 1:band_max, ispinor in 1:nspinor
+                for ipw in 1:nwaves_at_kp[ik] 
+                    coeff_array[ipw, ispinor, ib, ik, is] = grid[indices[1, ipw, ik], indices[2, ipw, ik],indices[3, ipw, ik], 
+                         ispinor, ib, ik, is] 
+                end
+            end
+        end
+    end
+    coeff_array
+end
+
+function recip_to_coeff(grid, data_dict)
+    wave = data_dict[:WAVEFUNCTION_DATA]
+    recip_to_coeff(grid, wave.coeffs, wave.nwaves_at_kp, wave.pw_grid_coord, wave.ngx, wave.ngy, wave.ngz)
+end
+
 """
 Convert G-vector coordinates (unit of reciprocal lattice basis) to 1-based grid indices
 """
