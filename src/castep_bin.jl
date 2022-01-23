@@ -442,7 +442,17 @@ function read_castep_check(fname)
     output
 end
 
-function update_wavefunction(fname, coeffs)
+
+"""
+    update_wavefunction(fname, coeffs::AbstractArray{T, 5}) where {T}
+
+Update the wavefunction (coefficients) stored in the check file. 
+The coefficients array passed should be modified based on that was originally
+read from the file.
+
+* **NOTE** this function will overwrite target file.
+"""
+function update_wavefunction(fname, coeffs::AbstractArray{T, 5}) where {T}
     output = Dict{Symbol, Any}()
     open(fname, "r+") do fhandle
         f = CastepFortranFile(fhandle)
@@ -451,6 +461,19 @@ function update_wavefunction(fname, coeffs)
         @assert has_wave "The file does not contain any wavefunction data"
         update_wavefunction(output, f, tags, coeffs)
     end
+end
+
+
+"""
+    update_wavefunction(src, dst, coeffs::AbstractArray{T, 5}) where {T}
+
+Update the wavefunction (coefficients) stored in the check file. 
+The coefficients array passed should be modified based on that was originally
+read from the file.
+"""
+function update_wavefunction(src, dst, coeffs::AbstractArray{T, 5}) where {T}
+    cp(src, dst)
+    update_wavefunction(dst, coeffs)
 end
 
 precompile(read_castep_check, (String, ))
