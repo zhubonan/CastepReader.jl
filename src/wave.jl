@@ -4,7 +4,7 @@ Wavefunction related routines
 The goal is to recover the full wavefunction grid from the planewave coefficients
 =#
 import FFTW
-import FFTW: fft!, ifft!
+using FFTW
 
 export WaveFunction, ChargeDensity, chargedensity, sliceband, slicekpoint, slicespin, slicespinor
 
@@ -117,16 +117,20 @@ mutable struct WaveFunction
     nspins::Int
 end
 
-struct ChargeDensity
-    density::Array{Float64, 4}
+struct ChargeDensity{T}
+    density::Array{T, 4}
     ngx::Int
     ngy::Int
     ngz::Int
     nspins::Int
 end
 
-function ChargeDensity(density::Array)
+function ChargeDensity(density)
     ChargeDensity(density, size(density)...)
+end
+
+function ChargeDensity{T}(ngx::Int, ngy::Int, ngz::Int) where {T}
+    ChargeDensity(zeros(T, ngx, ngy, ngz))
 end
 
 function WaveFunction(data_dict::Dict)
@@ -181,15 +185,61 @@ end
 Compute charge density from the wavefunction
 
 The unit is yet to be determined for now.
+Note that the density does not include the augmentation charges involved in ultrasoft pseudopotentials
 """
-function chargedensity(wavef::WaveFunction, occupations::Array{T, 3}) where {T}
+function chargedensity(wavef::WaveFunction, occupations, kpoints_weights)
     @assert wavef.real_space == true "Wavefunction must be in the real space"
     density = zeros(Float64, wavef.ngx, wavef.ngy, wavef.ngz, wavef.nspins)
     for is=1:wavef.nspins,ik=1:wavef.nkpts,ib=1:wavef.nbands,ispinor=1:wavef.nspinor
         for z=1:wavef.ngz, y=1:wavef.ngy, x=1:wavef.ngx
             val = wavef.wave[x, y, z, ispinor, ib, ik, is]
-            density[x, y, z, is] += real(val * conj(val)) * occupations[ib, ik, is]
+            density[x, y, z, is] += (real(val) ^ 2 + imag(val)^2) * occupations[ib, ik, is] * kpoints_weights[ik]
         end
     end
     ChargeDensity(density)
+end
+
+
+"""
+Interpolate charge density from `c1` into `c2` with a finner grid
+"""
+function fine_grid_interpolate(c1::ChargeDensity{T}, c2::ChargeDensity{T}) where {T}
+    # Zero the grid to be interpolated into
+    fill!(0., c2.density)
+    ngx, ngy, ngz = c1.ngx, c1.ngy, c1.ngz
+    ngxf, ngyf, ngzf = c2.ngx, c2.ngy, c2.ngz
+    @assert (ngxf > ngx) && (ngyf > ngy) && (ngzf > ngz)
+    
+    workspace = zeros(ComplexF64, ngx, ngy, ngz)
+    workspace_fine = zeros(ComplexF64, ngxf, ngyf, ngzf)
+    for is in 1:c1.nspins
+        workspace .= c1.density[:, :, :, is]
+        # To reciprocal space
+        fft!(workspace)
+        for z = 1:ngz, y=1:ngy, x=1:ngx
+            # Compute the index in the interpolated grid in the reciprocal space
+            x < ngx/2+1 ? fx = x : fx = ngxf - ngx + x
+            y < ngy/2+1 ? fy = y : fy = ngyf - ngy + y
+            z < ngz/2+1 ? fz = z : fz = ngzf - ngz + z
+            work_space_fine[fx, fy, fz] = workspace[x, y, z]
+        end
+        # Back to real space
+        ifft!(workspace_fine)
+        # Function barrier for copying back the density
+        copy_density(c2, workspace_fine, is)
+    end
+end
+
+"""
+Copy density from a temporary array in to the spin channel
+"""
+function copy_density(density::ChargeDensity{ComplexF64}, tmp, spin) 
+    density.density[:, :, :, spin] .= tmp
+end
+
+"""
+Copy density from a temporary array in to the spin channel
+"""
+function copy_density(density::ChargeDensity{Float64}, tmp, spin) 
+    density.density[:, :, :, spin] .= real.(tmp)
 end
