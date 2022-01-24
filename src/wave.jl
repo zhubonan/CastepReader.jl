@@ -209,7 +209,7 @@ function fine_grid_interpolate(c1::ChargeDensity{T}, c2::ChargeDensity{T}) where
     ngx, ngy, ngz = c1.ngx, c1.ngy, c1.ngz
     ngxf, ngyf, ngzf = c2.ngx, c2.ngy, c2.ngz
     @assert (ngxf > ngx) && (ngyf > ngy) && (ngzf > ngz)
-    
+
     workspace = zeros(ComplexF64, ngx, ngy, ngz)
     workspace_fine = zeros(ComplexF64, ngxf, ngyf, ngzf)
     for is in 1:c1.nspins
@@ -242,4 +242,32 @@ Copy density from a temporary array in to the spin channel
 """
 function copy_density(density::ChargeDensity{Float64}, tmp, spin) 
     density.density[:, :, :, spin] .= real.(tmp)
+end
+
+
+"""
+Computed weighted density from some given weights by bands
+"""
+function weighted_density_by_bands(fname, weights)
+    data = read_castep_check(fname)
+    nbands = data[:NBANDS]
+    nspins = data[:NSPINS]
+    nkpts = data[:NKPTS]
+    @assert size(weights, 1) nbands
+    wavef = WaveFunction(data)
+    ifft!(wavef)
+    chargedensity(wavef, ensure_three_dims(weights, nkpts, nspins), data[:KPOINTS_WEIGHTS])
+end
+
+
+ensure_three_dims(weights::AbstractArray{T, 1}, d1, d2) where {T} = repeat(weights[:, 1, 1], d1, d2)
+ensure_three_dims(weights::AbstractArray{T, 2}, d1, d2) where {T} = repeat(weights[:, :, 1], d1, d2)
+ensure_three_dims(weights::AbstractArray{T, 3}, d1, d2) where {T} = weights
+
+"""
+Update wavefunction of an existing file
+"""
+function CastepBin.update_wavefunction(src, dst, wavef::WaveFunction, data::Dict)
+    new_coeff = recip_to_coeff(wavef.wave, data)
+    CastepBin.update_wavefunction(src, dst, new_coeff)
 end

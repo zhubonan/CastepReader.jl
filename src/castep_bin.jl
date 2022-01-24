@@ -158,7 +158,7 @@ end
 function read_cell!(output, f::FortranFile, tags::Dict{String,Int})
 
     @readtag f output tags begin
-        BEGIN_UNIT_CELL
+        BEGIN_UNIT_CELL_SECOND
         skip
         REAL_LATTICE::(Float64, 3, 3)
         skip
@@ -172,31 +172,36 @@ function read_cell!(output, f::FortranFile, tags::Dict{String,Int})
         skip
         MAX_IONS_IN_SPECIES::IntF
 
-        CELL_VERSION_NUMBER
+        CELL_VERSION_NUMBER_SECOND
         VERSION_NUMBER::Float64
 
-        "CELL%NUM_IONS_IN_SPECIES"
+        "CELL%NUM_IONS_IN_SPECIES_SECOND"
 
         NUM_IONS_IN_SPECIES::(IntF, :NUM_SPECIES)
 
-        "CELL%IONIC_POSITIONS"
+        "CELL%IONIC_POSITIONS_SECOND"
 
         IONIC_POSITIONS::(Float64, 3, :MAX_IONS_IN_SPECIES, :NUM_SPECIES)
 
-        "CELL%IONIC_VELOCITIES"
+        "CELL%IONIC_VELOCITIES_SECOND"
 
         IONIC_VELOCITIES::(Float64, 3, :MAX_IONS_IN_SPECIES, :NUM_SPECIES)
 
-        "CELL%SPECIES_SYMBOL"
+        "CELL%SPECIES_SYMBOL_SECOND"
 
         SPECIES_SYMBOL::(FString{8}, :NUM_SPECIES)
     end
+
     @readtag f output tags begin
         NKPTS_SECOND
         NKPTS::IntF
 
         KPOINTS_SECOND
         KPOINTS::(Float64, 3, :NKPTS)
+
+        KPOINTS_WEIGHTS_SECOND
+        KPOINTS_WEIGHTS::(Float64, :NKPTS)
+
     end
 
     output
@@ -482,3 +487,4 @@ export read_castep_check, update_wavefunction
 end
 
 using .CastepBin
+import .CastepBin

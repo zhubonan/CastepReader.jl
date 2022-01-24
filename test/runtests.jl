@@ -85,7 +85,7 @@ end
     @test wavef.real_space == false
     # Charge density - with out interpolation
     ifft!(wavef)
-    out = CastepReader.chargedensity(wavef, ones(wavef.nbands, wavef.nkpts, wavef.nspins))
+    out = CastepReader.chargedensity(wavef, ones(wavef.nbands, wavef.nkpts, wavef.nspins), ones(wavef.nkpts))
     @assert out.ngx == ngx
 
     # For test updating wave coefficients
@@ -105,6 +105,13 @@ end
         dst = joinpath(mktempdir(), "GaAs.castep_bin")
         cp(binfile, dst)
         @test_throws AssertionError  CastepReader.update_wavefunction(dst, getcoeff(data))
+
+        # Update with given wavefunction type
+        wf = CastepReader.WaveFunction(data)
+        dst = joinpath(mktempdir(), "GaAs.check")
+        CastepReader.update_wavefunction(checkfile, dst, wf, data)
+        new_data = read_castep_check(dst)
+        @test getcoeff(new_data)[1011] == 0.
     end
 end
 
