@@ -260,8 +260,8 @@ function weighted_density_by_bands(fname, weights)
 end
 
 
-ensure_three_dims(weights::AbstractArray{T, 1}, d1, d2) where {T} = repeat(weights[:, 1, 1], d1, d2)
-ensure_three_dims(weights::AbstractArray{T, 2}, d1, d2) where {T} = repeat(weights[:, :, 1], d1, d2)
+ensure_three_dims(weights::AbstractArray{T, 1}, d1, d2) where {T} = repeat(weights[:, :, :], d1, d2)
+ensure_three_dims(weights::AbstractArray{T, 2}, d1, d2) where {T} = repeat(weights[:, :, :], d2)
 ensure_three_dims(weights::AbstractArray{T, 3}, d1, d2) where {T} = weights
 
 """

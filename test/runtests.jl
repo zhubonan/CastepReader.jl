@@ -150,3 +150,13 @@ end
     @test size(output)[4] == 10
     
 end
+
+@testset "writers" begin
+    @testset "chgcar" begin
+        buffer = IOBuffer()
+        CastepReader.write_chgcar(buffer, [rand(10, 10, 10)])
+        seek(buffer, 0)
+        content = take!(buffer)
+        @test endswith(String(content), "\n")
+    end
+end
