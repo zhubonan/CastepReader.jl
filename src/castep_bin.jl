@@ -231,25 +231,6 @@ function read_grid_properties!(output, f::FortranFile, tags::Dict{String, Int}, 
     read_charge_density!(output, f, tags)
 end
 
-"""
-Read the grid properties but update the plane wave coefficients as given
-"""
-function update_wavefunction(output, f::FortranFile, tags::Dict{String, Int}, coeffs)
-
-    @readtag f output tags begin
-        END_CELL_GLOBAL_SECOND
-        FOUND_GROUND_STATE_WAVEFUNCTION::IntF
-        FOUND_GROUND_STATE_DENSITY::IntF
-        TOTAL_ENERGY::Float64
-        FERMI_ENERGY::Float64
-    end
-    nbands, nspins = read(f, IntF, IntF)
-    output[:NBANDS] = nbands
-    output[:NSPINS] = nspins
-    # Write the wave function
-    write_wavefunction_complex!(output, f, tags, coeffs)
-end
-
 
 """
 Read eigenvalues and occupations
@@ -358,7 +339,6 @@ function write_wavefunction_complex!(output, f, tags, coeffs)
     nwaves_at_kp = zeros(Int, nkpts)
     kpts = zeros(3, nkpts)
     pw_grid_coord = zeros(IntF, 3, coeff_size_1, nkpts)
-
     for is in 1:nspins
         for ik in 1:nkpts
             kpts[:, ik], nwaves = read(f, (Float64, 3), IntF)
@@ -447,6 +427,25 @@ function read_castep_check(fname)
     output
 end
 
+"""
+Read the grid properties but update the plane wave coefficients as given
+"""
+function update_wavefunction!(output, f::FortranFile, tags::Dict{String, Int}, coeffs)
+
+    @readtag f output tags begin
+        END_CELL_GLOBAL_SECOND
+        FOUND_GROUND_STATE_WAVEFUNCTION::IntF
+        FOUND_GROUND_STATE_DENSITY::IntF
+        TOTAL_ENERGY::Float64
+        FERMI_ENERGY::Float64
+    end
+    nbands, nspins = read(f, IntF, IntF)
+    output[:NBANDS] = nbands
+    output[:NSPINS] = nspins
+    # Write the wave function
+    write_wavefunction_complex!(output, f, tags, coeffs)
+end
+
 
 """
     update_wavefunction(fname, coeffs::AbstractArray{T, 5}) where {T}
@@ -457,14 +456,14 @@ read from the file.
 
 * **NOTE** this function will overwrite target file.
 """
-function update_wavefunction(fname, coeffs::AbstractArray{T, 5}) where {T}
+function update_wavefunction!(fname, coeffs::AbstractArray{T, 5}) where {T}
     output = Dict{Symbol, Any}()
     open(fname, "r+") do fhandle
         f = CastepFortranFile(fhandle)
         tags = locate_tags(f)
         has_wave = !("CASTEP_BIN" in keys(tags))
         @assert has_wave "The file does not contain any wavefunction data"
-        update_wavefunction(output, f, tags, coeffs)
+        update_wavefunction!(output, f, tags, coeffs)
     end
 end
 
@@ -478,11 +477,11 @@ read from the file.
 """
 function update_wavefunction(src, dst, coeffs::AbstractArray{T, 5}) where {T}
     cp(src, dst)
-    update_wavefunction(dst, coeffs)
+    update_wavefunction!(dst, coeffs)
 end
 
 precompile(read_castep_check, (String, ))
-export read_castep_check, update_wavefunction
+export read_castep_check, update_wavefunction, update_wavefunction!
 
 end
 

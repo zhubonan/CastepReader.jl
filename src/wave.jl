@@ -36,6 +36,15 @@ function coeff_to_recip(coeff_array, nwaves_at_kp, grid_coords, ngx, ngy, ngz)
     grid
 end
 
+"""
+    coeff_to_recip(coeff_array, data_dict::Dict)
+
+Convert plane wave coefficients to a reciprocal space grid.
+"""
+function coeff_to_recip(coeff_array, data_dict::Dict)
+    wave = data_dict[:WAVEFUNCTION_DATA]
+    coeff_to_recip(coeff_array, wave.nwaves_at_kp, wave.pw_grid_coord, wave.ngx, wave.ngy, wave.ngz)
+end
 
 """
 Convert full grid representation back to reciprocal coefficients
@@ -148,6 +157,7 @@ slicekpoint(wave::WaveFunction, ik) = selectdim(wave.wave, 6, ik)
 slicespin(wave::WaveFunction, is) = selectdim(wave.wave, 7, is)
 
 """
+    FFTW.fft!(wavef::WaveFunction)
 In place FFT to transfer the wavefunction to the frequency space
 
 The in-place transformation is apply slice by slice
@@ -161,6 +171,16 @@ function FFTW.fft!(wavef::WaveFunction)
     end
     wavef.real_space = false
     wavef
+end
+
+"""
+    fft(wavef::WaveFunction)
+FFT to transfer the wavefunction to the frequency space
+"""
+function FFTW.fft(wavef::WaveFunction)
+    @assert wavef.real_space "WaveFunction is already in the frequency space"
+    new_wave = deepcopy(wavef)
+    FFTW.fft!(new_wave)
 end
 
 
@@ -180,6 +200,18 @@ function FFTW.ifft!(wavef::WaveFunction)
     wavef
 end
 
+"""
+    fft(wavef::WaveFunction)
+FFT to transfer the wavefunction to the frequency space
+"""
+function FFTW.ifft(wavef::WaveFunction)
+    @assert ~wavef.real_space "WaveFunction is already in the real space"
+    new_wave = deepcopy(wavef)
+    FFTW.ifft!(new_wave)
+end
+
+ensure_recip!(wavef::WaveFunction) = wavef.real_space && fft!(wavef)
+ensure_real!(wavef::WaveFunction) = wavef.real_space || ifft!(wavef)
 
 """
 Compute charge density from the wavefunction
@@ -267,7 +299,17 @@ ensure_three_dims(weights::AbstractArray{T, 3}, d1, d2) where {T} = weights
 """
 Update wavefunction of an existing file
 """
-function CastepBin.update_wavefunction(src, dst, wavef::WaveFunction, data::Dict)
+function CastepBin.update_wavefunction(src, dst, wavef::WaveFunction, data::Dict=read_castep_check(src))
+    @assert wavef.real_space == false "Wave must be in the reciprocal space"
     new_coeff = recip_to_coeff(wavef.wave, data)
     CastepBin.update_wavefunction(src, dst, new_coeff)
+end
+
+"""
+Update wavefunction of an existing file
+"""
+function CastepBin.update_wavefunction!(src, wavef::WaveFunction, data::Dict=read_castep_check(src))
+    @assert wavef.real_space == false "Wave must be in the reciprocal space"
+    new_coeff = recip_to_coeff(wavef.wave, data)
+    CastepBin.update_wavefunction!(src, new_coeff)
 end
