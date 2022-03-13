@@ -91,4 +91,17 @@ end
 export write_chgcar
 end # module chgcar
 
-using .Chgcar
+import .Chgcar: write_chgcar
+
+"""
+"""
+function write_chgcar(fname, density::ChargeDensity;sum_and_spin=true)
+    if sum_and_spin
+        total = (density.density[:, :, :, 1] .+ density[:, :, :, 2]) ./ 2
+        diff = (density.density[:, :, :, 1] .- density[:, :, :, 2]) ./ 2
+        datasets = (total, diff)
+    else
+        datasets = (density[:, :, :, 1], density[:, :, :, 2])
+    end
+    write_chgcar(fname, datasets;lattice_col=density.basis, species=(:Si, ), coords=[0., 0., 0.][:, :], )
+end

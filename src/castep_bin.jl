@@ -199,9 +199,8 @@ function read_cell!(output, f::FortranFile, tags::Dict{String,Int})
         KPOINTS_SECOND
         KPOINTS::(Float64, 3, :NKPTS)
 
-        KPOINTS_WEIGHTS_SECOND
-        KPOINTS_WEIGHTS::(Float64, :NKPTS)
-
+        KPOINT_WEIGHTS_SECOND
+        KPOINT_WEIGHTS::(Float64, :NKPTS)
     end
 
     output

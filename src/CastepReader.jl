@@ -68,6 +68,15 @@ module CastepReader
     using .Orbitals
     export Orbitals
 
+    ## Constants
+    using Unitful
+    using UnitfulAtomic
+
+    """Factor to convert Hatree to eV"""
+    const Ha2eV = ustrip(uconvert(u"eV", 1. * u"Eh_au"))
+    """Factor to convert Bohr to Å"""
+    const Bohr2Ang = ustrip(uconvert(u"Å", 1. * u"a0_au"))
+
     include("castep_bin.jl")
     include("wave.jl")
     include("optical_matrix.jl")

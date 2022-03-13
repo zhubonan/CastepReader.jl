@@ -5,6 +5,7 @@ The goal is to recover the full wavefunction grid from the planewave coefficient
 =#
 import FFTW
 using FFTW
+using LinearAlgebra
 
 export WaveFunction, ChargeDensity, chargedensity, sliceband, slicekpoint, slicespin, slicespinor
 
@@ -124,6 +125,15 @@ mutable struct WaveFunction
     nbands::Int
     nkpts::Int
     nspins::Int
+    basis::Matrix{Float64}
+    "Occupations in (ib, ik, is)"
+    occupations::Array{Float64, 3}
+    "Eigenvalues in (ib, ik, is)"
+    eigenvalues::Array{Float64, 3}
+    "Weight of the kpoints"
+    kpoint_weights::Array{Float64, 1}
+    "Coordinates of the kpoints"
+    kpoints::Array{Float64, 2}
 end
 
 struct ChargeDensity{T}
@@ -132,20 +142,43 @@ struct ChargeDensity{T}
     ngy::Int
     ngz::Int
     nspins::Int
+    basis::Matrix{Float64}
 end
 
-function ChargeDensity(density)
-    ChargeDensity(density, size(density)...)
+"""
+    ChargeDensity(density)
+
+Construction from a density array.
+"""
+function ChargeDensity(density, basis=diagm([10., 10., 10.]))
+    ChargeDensity(density, size(density)..., basis)
 end
 
+"""
+    ChargeDensity(ngx, ngy, ngz)
+
+Construction an empty ChargeDensity.
+"""
 function ChargeDensity{T}(ngx::Int, ngy::Int, ngz::Int) where {T}
     ChargeDensity(zeros(T, ngx, ngy, ngz))
 end
 
+"""
+    WaveFunction(data_dict::Dict)
+
+Construct the WaveFunction from a Dict of read data from castep_bin/check file
+"""
 function WaveFunction(data_dict::Dict)
     wave = wavefunction(data_dict)
-    args = size(wave)
-    WaveFunction(wave, false, args...)
+    ngx, ngy, ngz, nspinor, nbands, nkpts, nspins = size(wave)
+    basis = data_dict[:REAL_LATTICE] .* Bohr2Ang
+    eigenvalues = data_dict[:EIGENVALUES] .* Ha2eV
+    occupations = data_dict[:OCCUPATIONS]
+    
+    kpoints_weights = data_dict[:KPOINT_WEIGHTS]
+    kpoints = data_dict[:KPOINTS]
+    WaveFunction(wave, false, ngx, ngy, ngz, nspinor, nbands, nkpts, nspins, 
+                 basis, occupations, eigenvalues, kpoints_weights, kpoints)
 end
 
 slicespinor(wave::WaveFunction, ispinor) = selectdim(wave.wave, 4, ispinor)
@@ -214,21 +247,45 @@ ensure_recip!(wavef::WaveFunction) = wavef.real_space && fft!(wavef)
 ensure_real!(wavef::WaveFunction) = wavef.real_space || ifft!(wavef)
 
 """
-Compute charge density from the wavefunction
+    chargedensity(wavef::WaveFunction, kidx, bidx, sidx)
 
-The unit is yet to be determined for now.
-Note that the density does not include the augmentation charges involved in ultrasoft pseudopotentials
+Construct charge density for given kpoints, band, and spin indices
 """
-function chargedensity(wavef::WaveFunction, occupations, kpoints_weights)
-    @assert wavef.real_space == true "Wavefunction must be in the real space"
-    density = zeros(Float64, wavef.ngx, wavef.ngy, wavef.ngz, wavef.nspins)
-    for is=1:wavef.nspins,ik=1:wavef.nkpts,ib=1:wavef.nbands,ispinor=1:wavef.nspinor
+function chargedensity(wavef::WaveFunction, bidx, kidx, sidx; weighted=true)
+    orig_state = wave.real_space
+    ensure_real!(wavef)
+    for is in sidx,ik in kidx,ib in bidx,ispinor=1:wavef.nspinor
         for z=1:wavef.ngz, y=1:wavef.ngy, x=1:wavef.ngx
-            val = wavef.wave[x, y, z, ispinor, ib, ik, is]
-            density[x, y, z, is] += (real(val) ^ 2 + imag(val)^2) * occupations[ib, ik, is] * kpoints_weights[ik]
+            val = norm(wavef.wave[x, y, z, ispinor, ib, ik, is])
+            # Do we weight by kpoint weights and occupations? 
+            if weighted
+                val = val * wavef.occupations[ib, ik, is] * wavef.kpoint_weights[ik]
+            end
+            density[x, y, z, is] += val 
         end
     end
-    ChargeDensity(density)
+    orig_state == false && ensure_recip!(wavef)
+    ChargeDensity(density, wavef.basis)
+end
+
+"""
+    chargedensity(wavef::WaveFunction)
+
+Compute charge density from the wavefunction
+
+Note that the density does not include the augmentation charges involved in ultrasoft pseudopotentials
+"""
+function chargedensity(wavef::WaveFunction)
+    chargedensity(wavef, 1:wavef.nbands, 1:wavef.nkpts, 1:wavef.nspins)
+end
+
+"""
+    chargedensity(wavef::WaveFunction, ib, ik, is)
+
+Get the charge density for a single slice of band, kpoint, spin channel
+"""
+function chargedensity(wavef::WaveFunction, ib::Int, ik::Int, is::Int)
+    chargedensity(wavef, ib:ib, ik:ik, is:is;weighted=false)
 end
 
 
