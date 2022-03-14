@@ -251,15 +251,25 @@ ensure_real!(wavef::WaveFunction) = wavef.real_space || ifft!(wavef)
 
 Construct charge density for given kpoints, band, and spin indices
 """
-function chargedensity(wavef::WaveFunction, bidx, kidx, sidx; weighted=true)
-    orig_state = wave.real_space
+function chargedensity(wavef::WaveFunction, bidx, kidx, sidx; weighted=true, ivbm=-1)
+    orig_state = wavef.real_space
     ensure_real!(wavef)
+    density = zeros(wavef.ngx, wavef.ngy, wavef.ngz, wavef.nspins)
+    # Force occupations
+    if ivbm > 1
+        occ = zeros(size(wavef.occupations))
+        for ib =1:ivbm
+            occ[ib, : , :] .= 1.0
+        end
+    else
+        occ = wavef.occupations
+    end
     for is in sidx,ik in kidx,ib in bidx,ispinor=1:wavef.nspinor
         for z=1:wavef.ngz, y=1:wavef.ngy, x=1:wavef.ngx
             val = norm(wavef.wave[x, y, z, ispinor, ib, ik, is])
             # Do we weight by kpoint weights and occupations? 
             if weighted
-                val = val * wavef.occupations[ib, ik, is] * wavef.kpoint_weights[ik]
+                val = val * occ[ib, ik, is] * wavef.kpoint_weights[ik]
             end
             density[x, y, z, is] += val 
         end
@@ -275,8 +285,9 @@ Compute charge density from the wavefunction
 
 Note that the density does not include the augmentation charges involved in ultrasoft pseudopotentials
 """
-function chargedensity(wavef::WaveFunction)
-    chargedensity(wavef, 1:wavef.nbands, 1:wavef.nkpts, 1:wavef.nspins)
+function chargedensity(wavef::WaveFunction; ivbm=-1)
+    @assert ivbm > 1 || sum(wavef.occupations[:, 1, 1]) > 0. "VBM index must be passed for unweighted WaveFunction"
+    chargedensity(wavef, 1:wavef.nbands, 1:wavef.nkpts, 1:wavef.nspins;ivbm=ivbm)
 end
 
 """

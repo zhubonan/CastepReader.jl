@@ -139,6 +139,8 @@ function locate_tags(name::AbstractString)
 end
 
 """
+    record_tag!(out::Dict{String,Int}, rec;offset::Int)
+
 Record the positions of eligible records
 """
 function record_tag!(out::Dict{String,Int}, rec;offset::Int)
@@ -154,7 +156,12 @@ function record_tag!(out::Dict{String,Int}, rec;offset::Int)
     out[str] = loc - offset
 end
 
-"Read in the unit cell information"
+"""
+    read_cell!(output, f::FortranFile, tags::Dict{String,Int})
+
+Read in the unit cell information. Note that the data is taken from the *second* set which stores
+the *current* cell, e.g. consistent with the wavefunction data stored.
+"""
 function read_cell!(output, f::FortranFile, tags::Dict{String,Int})
 
     @readtag f output tags begin
@@ -204,6 +211,35 @@ function read_cell!(output, f::FortranFile, tags::Dict{String,Int})
     end
 
     output
+end
+
+"""
+    read_parameters_electronic(output, f::FortranFile, tags::Dict{String, Int})
+
+Read the data store after `BEGIN_ELECTRONIC` header. These are internal parameters used by 
+CASTEP. 
+There are duplicated entries in the same section as some of the field are written as different 
+types for backward compatibility.
+"""
+function read_parameters_electronic!(output, f::FortranFile, tags::Dict{String, Int})
+    @readtag f output tags begin
+        BEGIN_ELECTRONIC
+        skip
+        skip
+        skip
+        skip
+        PARAM_NBANDS::IntF
+        PARAM_ELEC_TEMP::Float64
+        skip
+        skip
+        PARAM_SPIN_POLARIZED::IntF
+        PARAM_ELECTRONIC_MINIMIZER::FString{10}
+        PARAM_NELECTRONS::Float64
+        PARAM_NUP::Float64
+        PARAM_NDOWN::Float64
+        PARAM_SPIN::Float64
+        PARAM_CHARGE::Float64
+    end
 end
 
 function read_grid_properties!(output, f::FortranFile, tags::Dict{String, Int}, with_wavefunction=false)
@@ -417,6 +453,7 @@ function read_castep_check(fname)
     open(fname) do fhandle
         f = CastepFortranFile(fhandle)
         tags = locate_tags(f)
+        read_parameters_electronic!(output, f, tags)
         read_cell!(output, f, tags)
         read_forces!(output, f, tags)
         read_stress!(output, f, tags)

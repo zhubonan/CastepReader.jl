@@ -10,6 +10,9 @@ using LinearAlgebra
 
 """Enumerate fortran float where a leading zero is written"""
 function ffloat(f)
+    if f == 0.
+        return @sprintf "0.000000000" 
+    end
     string = @sprintf "%.10E" f
     if f > 0
         return @sprintf "0.%s%sE%+03d" string[1:1] string[3:12] Int(ceil(log10(f)))
@@ -95,13 +98,18 @@ import .Chgcar: write_chgcar
 
 """
 """
-function write_chgcar(fname, density::ChargeDensity;sum_and_spin=true)
-    if sum_and_spin
-        total = (density.density[:, :, :, 1] .+ density[:, :, :, 2]) ./ 2
-        diff = (density.density[:, :, :, 1] .- density[:, :, :, 2]) ./ 2
+function write_chgcar(fname::AbstractString, density::ChargeDensity;sum_and_spin=true)
+    if size(density.density, 4) == 2 
+        if sum_and_spin
+        total = (density.density[:, :, :, 1] .+ density.density[:, :, :, 2]) ./ 2
+        diff = (density.density[:, :, :, 1] .- density.density[:, :, :, 2]) ./ 2
         datasets = (total, diff)
+        else
+            datasets = [density.density[:, :, :, 1], density.density[:, :, :, 2]]
+        end
     else
-        datasets = (density[:, :, :, 1], density[:, :, :, 2])
+        datasets = [density.density[:, :, :, 1],]
     end
+
     write_chgcar(fname, datasets;lattice_col=density.basis, species=(:Si, ), coords=[0., 0., 0.][:, :], )
 end
