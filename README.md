@@ -1,6 +1,6 @@
 # CastepReader.jl
 
-Julia package for reading CASTEP input/output files.
+Julia package for reading plane-wave DFT code [CASTEP](http://www.castep.org) input/output files.
 
 Implemented readers:
 
