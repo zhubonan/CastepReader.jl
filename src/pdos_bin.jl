@@ -3,11 +3,20 @@
     read_pdos_bin(f::FortranFile)
 
 Read the `pdos_bin` file.
-"""
-function read_pdos_bin(f::FortranFile)
 
-    fversion = read(f, Float64)
-    fheader = strip(convert(String, read(f, FString{80})))
+Args:
+
+- `legacy_format`: Read from file with legacy format, e.g. without the version number and header.
+"""
+function read_pdos_bin(f::FortranFile; legacy_format=false)
+
+    if legacy_format
+        fversion = -1.
+        fheader = "null"
+    else
+        fversion = read(f, Float64)
+        fheader = strip(convert(String, read(f, FString{80})))
+    end
 
     nk = read(f, IntF)
     ns = read(f, IntF)
@@ -55,10 +64,10 @@ end
 
 Read the `pdos_bin` file.
 """
-function read_pdos_bin(fname::AbstractString)
+function read_pdos_bin(fname::AbstractString; legacy_format=endswith(fname, ".pdos_weights"))
     open(fname) do fh
         f = CastepFortranFile(fh)
-        read_pdos_bin(f)
+        read_pdos_bin(f;legacy_format)
     end
 end
 
