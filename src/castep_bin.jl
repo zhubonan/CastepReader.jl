@@ -138,6 +138,19 @@ function locate_tags(name::AbstractString)
     end
 end
 
+
+"""
+Deduplicate keys by appending a suffix
+"""
+function deduplicate_keys(out, key)
+    for (i, name) in enumerate(["", "_SECOND", "_THIRD", "_FOURTH", "_FIFTH", "SIXTH"])
+        if !((key * name) in keys(out))
+            return key * name
+        end
+    end
+    return key * "_MANY"
+end
+
 """
     record_tag!(out::Dict{String,Int}, rec;offset::Int)
 
@@ -148,11 +161,9 @@ function record_tag!(out::Dict{String,Int}, rec;offset::Int)
     fs = read(rec, FString{rec.subreclen})  # Read as string
     any(x -> x < 0, fs.data) && return nothing
     str = strip(convert(String, fs))
-    m = match(r"[A-Z_0-9]*$", str)
+    m = match(r"^[A-Z_0-9]*$", str)
     isnothing(m) && return
-    if str in keys(out)
-        str = str * "_SECOND"
-    end
+    str = deduplicate_keys(out, str)
     out[str] = loc - offset
 end
 
@@ -246,14 +257,16 @@ function read_grid_properties!(output, f::FortranFile, tags::Dict{String, Int}, 
 
     @readtag f output tags begin
         END_CELL_GLOBAL_SECOND
-        FOUND_GROUND_STATE_WAVEFUNCTION::IntF
-        FOUND_GROUND_STATE_DENSITY::IntF
+        FOUND_GROUND_STATE_WAVEFUNCTION::Int32
+        FOUND_GROUND_STATE_DENSITY::Int32
         TOTAL_ENERGY::Float64
         FERMI_ENERGY::Float64
     end
     nbands, nspins = read(f, IntF, IntF)
     output[:NBANDS] = nbands
     output[:NSPINS] = nspins
+    @show tags["END_CELL_GLOBAL_SECOND"]
+    @show tags["END_CELL_GLOBAL"]
     if with_wavefunction
         read_wavefunction_complex!(output, f, tags)
     end
@@ -276,6 +289,7 @@ function read_eigenvalue_and_occ!(output, f, tags)
     nbands::Int = output[:NBANDS]
 
     kpoints = zeros(3, nkpts)
+    @show nbands nkpts nspin
     occ = zeros(nbands, nkpts, nspin)
     eignvalues = zeros(nbands, nkpts, nspin)
     for ik in 1:nkpts
