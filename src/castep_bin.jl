@@ -265,8 +265,6 @@ function read_grid_properties!(output, f::FortranFile, tags::Dict{String, Int}, 
     nbands, nspins = read(f, IntF, IntF)
     output[:NBANDS] = nbands
     output[:NSPINS] = nspins
-    @show tags["END_CELL_GLOBAL_SECOND"]
-    @show tags["END_CELL_GLOBAL"]
     if with_wavefunction
         read_wavefunction_complex!(output, f, tags)
     end
@@ -289,7 +287,6 @@ function read_eigenvalue_and_occ!(output, f, tags)
     nbands::Int = output[:NBANDS]
 
     kpoints = zeros(3, nkpts)
-    @show nbands nkpts nspin
     occ = zeros(nbands, nkpts, nspin)
     eignvalues = zeros(nbands, nkpts, nspin)
     for ik in 1:nkpts
